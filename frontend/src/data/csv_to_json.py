@@ -95,4 +95,3 @@ with open(output_json, 'w', encoding='utf-8') as f:
 print(f"Converted {len(laptops)} laptops to laptops.json")
 
 
-

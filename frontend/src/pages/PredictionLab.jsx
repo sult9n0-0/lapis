@@ -44,7 +44,6 @@ const COMPARE_OPTIONS = [
   { label: "<", value: "<" }
 ];
 const USAGE_OPTIONS = ["Gaming", "Business", "Student", "Creator"];
-const QUICK_BRANDS = ["Apple", "Dell", "ASUS", "HP", "Lenovo", "MSI"];
 const SORT_PARAMETERS = [
   { label: "Sort By", value: "" },
   { label: "Price", value: "price" },
@@ -172,14 +171,107 @@ function formatDateLabel(dateValue) {
   }).format(new Date(`${dateValue}T00:00:00`));
 }
 
+function parseStorageToGb(storageValue, fallback = 0) {
+  if (typeof storageValue === "number") return storageValue;
+  if (storageValue === "2TB+") return 2000;
+  if (storageValue === "1TB") return 1000;
+  if (storageValue === "512GB") return 512;
+  if (storageValue === "256GB") return 256;
+  const parsed = Number.parseFloat(storageValue);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+async function requestPrediction(payload, signal) {
+  const endpoints = ["/predict", "http://127.0.0.1:5000/predict"];
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal
+      });
+
+      if (!response.ok) {
+        lastError = new Error(`Prediction request failed with status ${response.status}`);
+        continue;
+      }
+
+      const data = await response.json();
+      if (!predictionResponseUsesModel(data)) {
+        lastError = new Error("Backend did not use model.pkl for prediction");
+        continue;
+      }
+
+      return data;
+    } catch (error) {
+      lastError = error;
+      if (error?.name === "AbortError") throw error;
+    }
+  }
+
+  throw lastError || new Error("Prediction request failed");
+}
+
+function predictionResponseUsesModel(data) {
+  if (Array.isArray(data?.predictions)) {
+    return data.predictions.every((item) => item?.modelSource === "model");
+  }
+
+  return data?.modelSource === "model";
+}
+
+function buildListPredictionPayload(laptop, predictionDate) {
+  return {
+    id: laptop.id,
+    company: laptop.brand,
+    typeName: laptop.raw.typeName,
+    usageProfile: laptop.usage,
+    cpuScore: laptop.processorScore,
+    gpuScore: laptop.gpuScore,
+    ram: laptop.raw.ram,
+    storage: laptop.raw.storage,
+    inches: laptop.raw.inches,
+    currentPrice: laptop.priceAed,
+    predictionDate
+  };
+}
+
+function buildPreviewPredictionPayload(laptop, state, predictionDate) {
+  return {
+    id: laptop.id,
+    company: laptop.brand,
+    typeName: laptop.raw.typeName,
+    usageProfile: laptop.usage,
+    cpuScore: getScoreValue("CPU", state.selectedCPU) || laptop.processorScore,
+    gpuScore: getScoreValue("GPU", state.selectedGPU) || laptop.gpuScore,
+    ram: parseStorageToGb(state.selectedRAM, laptop.raw.ram),
+    storage: parseStorageToGb(state.selectedStorage, laptop.raw.storage),
+    inches: laptop.raw.inches,
+    currentPrice: laptop.priceAed,
+    predictionDate
+  };
+}
+
+function normalizePredictionResults(results) {
+  return results.reduce((map, item) => {
+    if (item && item.id !== undefined && item.id !== null) {
+      map[item.id] = item;
+    }
+    return map;
+  }, {});
+}
+
 function SelectField({ label, value, onChange, options }) {
   return (
     <label className="min-w-0 flex-1">
-      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/60">{label}</span>
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-soft)]/60">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-11 w-full appearance-none rounded-xl border border-white/10 bg-slate-950/70 px-3 text-sm font-medium text-white shadow-sm outline-none transition focus:border-cyan-200/70 focus:ring-4 focus:ring-cyan-300/10"
+        className="h-11 w-full appearance-none rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm font-medium text-[var(--text-primary)] shadow-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--focus-ring)]"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -212,7 +304,7 @@ function SearchSelect({ label, value, onChange, options, placeholder = "Search..
   return (
     <div className="relative min-w-0">
       <label>
-        {label && <span className="mb-2 block text-sm font-bold uppercase tracking-[0.18em] text-cyan-100/70">{label}</span>}
+        {label && <span className="mb-2 block text-sm font-bold uppercase tracking-[0.18em] text-[var(--accent-soft)]/70">{label}</span>}
         <div className="relative">
           <input
             value={query}
@@ -223,9 +315,9 @@ function SearchSelect({ label, value, onChange, options, placeholder = "Search..
               setOpen(true);
             }}
             placeholder={placeholder}
-            className={`${large ? "h-14 text-base" : "h-11 text-sm"} w-full rounded-xl border border-white/10 bg-slate-950/80 px-3 pr-10 font-semibold text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-200/70 focus:ring-4 focus:ring-cyan-300/10 disabled:opacity-45`}
+            className={`${large ? "h-14 text-base" : "h-11 text-sm"} w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 pr-10 font-semibold text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-subtle)] focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--focus-ring)] disabled:opacity-45`}
           />
-          <span className="pointer-events-none absolute right-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-b-2 border-r-2 border-cyan-100" />
+          <span className="pointer-events-none absolute right-3 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rotate-45 border-b-2 border-r-2 border-[var(--accent-soft)]" />
         </div>
       </label>
 
@@ -235,7 +327,7 @@ function SearchSelect({ label, value, onChange, options, placeholder = "Search..
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
-            className="absolute left-0 right-0 top-full z-40 mt-2 max-h-64 overflow-y-auto rounded-xl border border-cyan-100/20 bg-slate-950 p-2 shadow-[0_0_36px_rgba(34,211,238,0.16)]"
+            className="absolute left-0 right-0 top-full z-40 mt-2 max-h-64 overflow-y-auto rounded-xl border border-[var(--border-strong)] bg-[var(--panel-strong)] p-2 shadow-[var(--shadow-soft)]"
           >
             {filteredOptions.map((option) => (
               <button
@@ -243,12 +335,12 @@ function SearchSelect({ label, value, onChange, options, placeholder = "Search..
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => choose(option)}
-                className="block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-200 transition hover:bg-cyan-300/10 hover:text-white"
+                className="block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--accent)]/10 hover:text-[var(--text-primary)]"
               >
                 {option}
               </button>
             ))}
-            {filteredOptions.length === 0 && <div className="px-3 py-2 text-sm text-slate-500">No matching options</div>}
+            {filteredOptions.length === 0 && <div className="px-3 py-2 text-sm text-[var(--text-subtle)]">No matching options</div>}
           </motion.div>
         )}
       </AnimatePresence>
@@ -270,16 +362,16 @@ function currencyValueToAed(value, currency) {
 function PriceField({ label, value, onChange, currency, placeholder }) {
   return (
     <label className="min-w-0">
-      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/60">{label}</span>
-      <div className="flex h-11 items-center rounded-xl border border-white/10 bg-slate-950/70 px-3 shadow-sm transition focus-within:border-cyan-200/70 focus-within:ring-4 focus-within:ring-cyan-300/10">
-        <span className="mr-2 shrink-0 text-xs font-semibold text-cyan-100/60">{currency}</span>
+      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-soft)]/60">{label}</span>
+      <div className="flex h-11 items-center rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 shadow-sm transition focus-within:border-[var(--accent-border)] focus-within:ring-4 focus-within:ring-[var(--focus-ring)]">
+        <span className="mr-2 shrink-0 text-xs font-semibold text-[var(--accent-soft)]/60">{currency}</span>
         <input
           type="number"
           min="0"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium text-white outline-none placeholder:text-slate-500"
+          className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium text-[var(--text-primary)] outline-none placeholder:text-[var(--text-subtle)]"
         />
       </div>
     </label>
@@ -293,8 +385,8 @@ function PillButton({ selected, children, onClick }) {
       onClick={onClick}
       className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
         selected
-          ? "border-cyan-200 bg-cyan-300 text-slate-950 shadow-[0_0_24px_rgba(34,211,238,0.35)]"
-          : "border-white/10 bg-white/[0.045] text-slate-300 hover:border-cyan-200/60 hover:bg-cyan-300/10 hover:text-white"
+          ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-contrast)] shadow-[var(--shadow-soft)]"
+          : "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--text-secondary)] hover:border-[var(--accent-border)] hover:bg-[var(--accent)]/10 hover:text-[var(--text-primary)]"
       }`}
     >
       {children}
@@ -344,7 +436,7 @@ function BrandComboBox({ draft, setDraft }) {
   return (
     <div className="relative">
       <label>
-        <span className="mb-2 block text-sm font-semibold text-slate-100">Brand</span>
+        <span className="mb-2 block text-sm font-semibold text-[var(--text-primary)]">Brand</span>
         <input
           value={draft.brandSearch}
           onFocus={() => setOpen(true)}
@@ -354,7 +446,7 @@ function BrandComboBox({ draft, setDraft }) {
           }}
           onKeyDown={handleKeyDown}
           placeholder="Search brand..."
-          className="h-12 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-200/70 focus:ring-4 focus:ring-cyan-300/10"
+          className="h-12 w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-4 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-subtle)] focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--focus-ring)]"
         />
       </label>
 
@@ -365,7 +457,7 @@ function BrandComboBox({ draft, setDraft }) {
               key={brand}
               type="button"
               onClick={() => removeBrand(brand)}
-              className="rounded-full border border-cyan-200 bg-cyan-300 px-3 py-1.5 text-xs font-semibold text-slate-950"
+              className="rounded-full border border-[var(--accent)] bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-contrast)]"
             >
               {brand} x
             </button>
@@ -379,7 +471,7 @@ function BrandComboBox({ draft, setDraft }) {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
-            className="absolute left-0 right-0 top-[4.7rem] z-20 rounded-xl border border-cyan-100/15 bg-slate-950/95 p-2 shadow-[0_0_32px_rgba(34,211,238,0.16)] backdrop-blur-xl"
+            className="absolute left-0 right-0 top-[4.7rem] z-20 rounded-xl border border-[var(--border)] bg-[var(--panel-bg)] p-2 shadow-[var(--shadow-soft)] backdrop-blur-xl"
           >
             {previewBrands.map((brand) => (
               <button
@@ -387,13 +479,13 @@ function BrandComboBox({ draft, setDraft }) {
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => selectBrand(brand)}
-                className="block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-200 hover:bg-cyan-300/10 hover:text-white"
+                className="block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-[var(--text-secondary)] hover:bg-[var(--accent)]/10 hover:text-[var(--text-primary)]"
               >
                 {brand}
               </button>
             ))}
-            {filteredBrands.length > 5 && <div className="px-3 py-2 text-sm font-semibold text-slate-500">...</div>}
-            {filteredBrands.length === 0 && <div className="px-3 py-2 text-sm text-slate-500">No more brands</div>}
+            {filteredBrands.length > 5 && <div className="px-3 py-2 text-sm font-semibold text-[var(--text-subtle)]">...</div>}
+            {filteredBrands.length === 0 && <div className="px-3 py-2 text-sm text-[var(--text-subtle)]">No more brands</div>}
           </motion.div>
         )}
       </AnimatePresence>
@@ -407,12 +499,12 @@ function PerformanceFilter({ title, companyValue, modelValue, compareValue, mode
 
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold text-slate-100">{title}</h3>
+      <h3 className="mb-3 text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
       <div className="grid grid-cols-[1fr_1fr_4rem] gap-2">
         <select
           value={companyValue}
           onChange={(event) => onCompanyChange(event.target.value)}
-          className="h-11 min-w-0 rounded-xl border border-white/10 bg-slate-950/70 px-3 text-sm font-medium text-white outline-none focus:border-cyan-200/70"
+          className="h-11 min-w-0 rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm font-medium text-[var(--text-primary)] outline-none focus:border-[var(--accent-border)]"
         >
           <option value="">Company</option>
           {companies.map((company) => (
@@ -431,7 +523,7 @@ function PerformanceFilter({ title, companyValue, modelValue, compareValue, mode
         <select
           value={compareValue}
           onChange={(event) => onCompareChange(event.target.value)}
-          className="h-11 rounded-xl border border-white/10 bg-slate-950/70 px-3 text-sm font-bold text-white outline-none focus:border-cyan-200/70"
+          className="h-11 rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm font-bold text-[var(--text-primary)] outline-none focus:border-[var(--accent-border)]"
         >
           {COMPARE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
@@ -451,18 +543,18 @@ function FilterPanel({ draft, setDraft, onClear, onApply, mobile = false }) {
 
   return (
     <aside
-      className={`${mobile ? "" : "sticky top-6"} rounded-2xl border border-cyan-100/15 bg-slate-950/72 p-5 shadow-[0_0_50px_rgba(14,165,233,0.12)] backdrop-blur-2xl`}
+      className={`${mobile ? "" : "sticky top-6"} rounded-2xl border border-[var(--border)] bg-[var(--panel-strong)] p-5 shadow-[var(--shadow-soft)] backdrop-blur-2xl`}
     >
       <div className="mb-5">
-        <h2 className="text-lg font-semibold text-white">Signal Filters</h2>
-        <p className="text-sm text-slate-400">Refine the current-price model output.</p>
+        <h2 className="text-lg font-semibold text-[var(--text-primary)]">Signal Filters</h2>
+        <p className="text-sm text-[var(--text-muted)]">Refine the current-price model output.</p>
       </div>
 
       <div className="space-y-6">
-        <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-purple-200/20 bg-purple-300/10 px-4 py-3">
+        <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-[var(--highlight-border)] bg-[var(--highlight)]/10 px-4 py-3">
           <span>
-            <span className="block text-sm font-semibold text-purple-100">Cross-brand performance exploration</span>
-            <span className="mt-1 block text-xs leading-5 text-slate-400">
+            <span className="block text-sm font-semibold text-[var(--highlight-soft)]">Cross-brand performance exploration</span>
+            <span className="mt-1 block text-xs leading-5 text-[var(--text-muted)]">
               Compare CPU and GPU benchmark levels across different chip makers.
             </span>
           </span>
@@ -470,7 +562,7 @@ function FilterPanel({ draft, setDraft, onClear, onApply, mobile = false }) {
             type="checkbox"
             checked={draft.crossBrandPerformance}
             onChange={(event) => setDraft((current) => ({ ...current, crossBrandPerformance: event.target.checked }))}
-            className="mt-1 h-5 w-5 shrink-0 accent-purple-300"
+            className="mt-1 h-5 w-5 shrink-0 accent-[var(--highlight)]"
           />
         </label>
 
@@ -507,27 +599,27 @@ function FilterPanel({ draft, setDraft, onClear, onApply, mobile = false }) {
         </FilterSection>
 
         <label>
-          <span className="mb-2 block text-sm font-semibold text-slate-100">Keywords</span>
+          <span className="mb-2 block text-sm font-semibold text-[var(--text-primary)]">Keywords</span>
           <input
             value={draft.keywords}
             onChange={(event) => setDraft((current) => ({ ...current, keywords: event.target.value }))}
             placeholder="Enter Keyword..."
-            className="h-12 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-200/70 focus:ring-4 focus:ring-cyan-300/10"
+            className="h-12 w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-4 text-sm text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-subtle)] focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--focus-ring)]"
           />
         </label>
 
-        <div className="grid grid-cols-2 gap-3 border-t border-white/10 pt-5">
+        <div className="grid grid-cols-2 gap-3 border-t border-[var(--border)] pt-5">
           <button
             type="button"
             onClick={onClear}
-            className="h-12 rounded-xl border border-white/15 bg-white/[0.03] text-sm font-bold text-slate-200 transition hover:border-cyan-200/50 hover:text-white"
+            className="h-12 rounded-xl border border-[var(--border-strong)] bg-[var(--surface-muted)] text-sm font-bold text-[var(--text-secondary)] transition hover:border-[var(--accent-border)] hover:text-[var(--text-primary)]"
           >
             Clear
           </button>
           <button
             type="button"
             onClick={onApply}
-            className="h-12 rounded-xl bg-cyan-300 text-sm font-bold text-slate-950 shadow-[0_0_32px_rgba(34,211,238,0.25)] transition hover:bg-cyan-200"
+            className="h-12 rounded-xl bg-[var(--accent)] text-sm font-bold text-[var(--accent-contrast)] shadow-[var(--shadow-soft)]"
           >
             Apply Filters
           </button>
@@ -540,7 +632,7 @@ function FilterPanel({ draft, setDraft, onClear, onApply, mobile = false }) {
 function FilterSection({ title, children }) {
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold text-slate-100">{title}</h3>
+      <h3 className="mb-3 text-sm font-semibold text-[var(--text-primary)]">{title}</h3>
       <div className="flex flex-wrap gap-2">{children}</div>
     </div>
   );
@@ -552,16 +644,6 @@ function getStorageScore(storage) {
   if (storage === "512GB") return 2;
   if (storage === "256GB") return 1;
   return 0;
-}
-
-function getListPredictedPrice(priceAed, predictionDate, laptop) {
-  if (!predictionDate) return priceAed;
-  const today = new Date();
-  const target = new Date(`${predictionDate}T00:00:00`);
-  const daysAhead = Math.max(1, Math.ceil((target - today) / 86400000));
-  const storageLift = laptop ? getStorageScore(laptop.storage) * 0.004 : 0;
-  const projectedLift = Math.min(0.2, daysAhead * 0.0009 + storageLift);
-  return Math.round(priceAed * (1 + projectedLift));
 }
 
 function getSupportedConfig(laptop) {
@@ -578,34 +660,16 @@ function getSupportedConfig(laptop) {
   };
 }
 
-function getPredictedPrice(modelID,date,specs) {
-  const laptop=LAPTOPS.find((item)=>item.id===modelID);
-  if (!laptop) return { predictedPrice: 0, confidenceScore: "0%" };
-  const config=getSupportedConfig(laptop);
-  const ramBoost=Math.max(0, config.ram.indexOf(specs.selectedRAM)) * 0.045;
-  const storageBoost=Math.max(0, config.storage.indexOf(specs.selectedStorage)) * 0.04;
-  const gpuBoost=Math.max(0, config.gpu.indexOf(specs.selectedGPU)) * 0.07;
-  const cpuBoost=Math.max(0, config.cpu.indexOf(specs.selectedCPU)) * 0.055;
-  const target=new Date(`${date || getTomorrowDateValue()}T00:00:00`);
-  const daysAhead=Math.max(1, Math.ceil((target - new Date()) / 86400000));
-  const timeLift=Math.min(0.14, daysAhead * 0.0008);
-  const multiplier=1 + timeLift + ramBoost + storageBoost + gpuBoost + cpuBoost;
-  const predictedPrice=Math.round(laptop.priceAed * multiplier);
-  const confidenceBase=97 - (Math.max(0, config.ram.indexOf(specs.selectedRAM)) * 2 + Math.max(0, config.storage.indexOf(specs.selectedStorage)) * 2 + Math.max(0, config.gpu.indexOf(specs.selectedGPU)) * 3 + Math.max(0, config.cpu.indexOf(specs.selectedCPU)) * 2);
-  const confidenceScore=`${Math.max(82, confidenceBase)}%`;
-  return { predictedPrice, confidenceScore };
-}
-
 function getPerformanceScore(laptop) {
   return laptop.processorScore * 0.52 + laptop.gpuScore * 0.38 + getStorageScore(laptop.storage) * 550;
 }
 
-function sortLaptops(laptops, sortParameter, sortDirection, predictionDate) {
+function sortLaptops(laptops, sortParameter, sortDirection, predictionDate, predictionResults) {
   const sorted = [...laptops];
 
   return sorted.sort((first, second) => {
-    const firstPrice = predictionDate ? getListPredictedPrice(first.priceAed, predictionDate, first) : first.priceAed;
-    const secondPrice = predictionDate ? getListPredictedPrice(second.priceAed, predictionDate, second) : second.priceAed;
+    const firstPrice = predictionDate ? predictionResults[first.id]?.prediction ?? first.priceAed : first.priceAed;
+    const secondPrice = predictionDate ? predictionResults[second.id]?.prediction ?? second.priceAed : second.priceAed;
     const firstPerformance = getPerformanceScore(first);
     const secondPerformance = getPerformanceScore(second);
     const direction = sortDirection === "asc" ? 1 : -1;
@@ -620,9 +684,54 @@ function sortLaptops(laptops, sortParameter, sortDirection, predictionDate) {
   });
 }
 
-function LaptopCard({ laptop, currency, predictionDate, onPreview }) {
+function LaptopCard({ laptop, currency, predictionDate, onPreview, predictedPrice, predictedConfidence }) {
   const isPredicting = Boolean(predictionDate);
-  const displayPrice = isPredicting ? getListPredictedPrice(laptop.priceAed, predictionDate, laptop) : laptop.priceAed;
+  const displayPrice = isPredicting ? predictedPrice ?? laptop.priceAed : laptop.priceAed;
+  const config = useMemo(() => getSupportedConfig(laptop), [laptop]);
+  const [draft, setDraft] = useState(() => ({
+    ram: laptop.ram,
+    storage: laptop.storage,
+    gpu: laptop.gpuModel,
+    cpu: laptop.processorModel
+  }));
+  const [inlinePrediction, setInlinePrediction] = useState({ price: predictedPrice ?? null, confidence: predictedConfidence ?? null });
+  const [inlineStatus, setInlineStatus] = useState("idle");
+
+  useEffect(() => {
+    setDraft({
+      ram: laptop.ram,
+      storage: laptop.storage,
+      gpu: laptop.gpuModel,
+      cpu: laptop.processorModel
+    });
+    setInlinePrediction({ price: predictedPrice ?? null, confidence: predictedConfidence ?? null });
+    setInlineStatus("idle");
+  }, [laptop.id, laptop.ram, laptop.storage, laptop.gpuModel, laptop.processorModel, predictedPrice, predictedConfidence, predictionDate]);
+
+  async function runInlinePrediction() {
+    const nextDate = predictionDate || getTomorrowDateValue();
+    setInlineStatus("loading");
+    try {
+      const response = await requestPrediction(
+        buildPreviewPredictionPayload(
+          laptop,
+          {
+            selectedRAM: draft.ram,
+            selectedStorage: draft.storage,
+            selectedGPU: draft.gpu,
+            selectedCPU: draft.cpu
+          },
+          nextDate
+        )
+      );
+      setInlinePrediction({ price: response.prediction, confidence: response.confidenceScore });
+      setInlineStatus("ready");
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+      setInlinePrediction({ price: null, confidence: null });
+      setInlineStatus("error");
+    }
+  }
 
   return (
     <motion.article
@@ -630,33 +739,63 @@ function LaptopCard({ laptop, currency, predictionDate, onPreview }) {
       initial={{ opacity: 0, y: 16, filter: "blur(10px)" }}
       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       exit={{ opacity: 0, y: -12, filter: "blur(10px)" }}
-      className="overflow-hidden rounded-2xl border border-cyan-100/12 bg-white/[0.055] shadow-[0_0_44px_rgba(14,165,233,0.08)] backdrop-blur-2xl transition hover:-translate-y-0.5 hover:border-cyan-200/35 hover:bg-white/[0.075] sm:grid sm:grid-cols-[220px_1fr]"
+      className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--card-bg)] shadow-[var(--shadow-soft)] sm:grid sm:grid-cols-[168px_1fr]"
     >
-      <div className="h-52 overflow-hidden bg-slate-950 sm:h-full">
+      <div className="h-40 overflow-hidden bg-[var(--panel-strong)] sm:h-full">
         <img src={laptop.image} alt={laptop.title} className="h-full w-full object-cover opacity-90 saturate-125" />
       </div>
-      <div className="p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="text-2xl font-semibold text-cyan-100">{formatPrice(displayPrice, currency)}</div>
-            <h3 className="mt-2 text-lg font-semibold text-white">{laptop.title}</h3>
-            <p className="mt-1 text-sm text-slate-400">{laptop.subtitle}</p>
+            <div className="text-xl font-semibold text-[var(--accent-soft)]">{formatPrice(displayPrice, currency)}</div>
+            <h3 className="mt-1.5 text-base font-semibold text-[var(--text-primary)]">{laptop.title}</h3>
+            <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--text-muted)]">{laptop.subtitle}</p>
           </div>
           {isPredicting && (
-            <div className="rounded-xl border border-cyan-200/20 bg-cyan-300/10 px-3 py-2 text-sm font-semibold text-cyan-100">
-              Confidence {laptop.confidence}
+            <div className="rounded-xl border border-[var(--accent-border)] bg-[var(--accent)]/10 px-2.5 py-1.5 text-xs font-semibold text-[var(--accent-soft)]">
+              Confidence {predictedConfidence || laptop.confidence}
             </div>
           )}
         </div>
 
-        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Spec label="RAM" value={laptop.ram} />
           <Spec label="Storage" value={`${laptop.storage} SSD`} />
           <Spec label="GPU" value={laptop.gpuLabel} />
           <Spec label="Processor" value={laptop.processor} />
         </div>
 
-        <div className="mt-5 flex flex-col gap-2 border-t border-white/10 pt-4 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--accent-soft)]/70">Edit specs here</h4>
+            <span className="text-xs font-semibold text-[var(--text-muted)]">Compatible options from this model family</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <ConfigSelect label="RAM" value={draft.ram} onChange={(value) => setDraft((current) => ({ ...current, ram: value }))} options={config.ram.map((item) => ({ label: item, value: item }))} />
+            <ConfigSelect label="Storage" value={draft.storage} onChange={(value) => setDraft((current) => ({ ...current, storage: value }))} options={config.storage.map((item) => ({ label: item, value: item }))} />
+            <SearchSelect label="GPU" value={draft.gpu} onChange={(value) => setDraft((current) => ({ ...current, gpu: value }))} options={config.gpu} placeholder="Select GPU..." large />
+            <SearchSelect label="Processor" value={draft.cpu} onChange={(value) => setDraft((current) => ({ ...current, cpu: value }))} options={config.cpu} placeholder="Select CPU..." large />
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={runInlinePrediction}
+              disabled={inlineStatus === "loading"}
+              className="rounded-xl bg-[var(--accent)] px-4 py-2.5 text-sm font-bold text-[var(--accent-contrast)] transition hover:bg-[var(--accent-hover)] disabled:opacity-60"
+            >
+              {inlineStatus === "loading" ? "Predicting..." : "Predict with these specs"}
+            </button>
+            {inlinePrediction.price !== null && (
+              <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-[var(--text-secondary)]">
+                <span>Predicted: <span className="text-[var(--accent-soft)]">{formatPrice(inlinePrediction.price, currency)}</span></span>
+                <span>Confidence: <span className="text-[var(--accent-soft)]">{inlinePrediction.confidence || "--"}</span></span>
+                {inlineStatus === "error" && <span className="text-rose-300">backend unavailable</span>}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-col gap-2 border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)] sm:flex-row sm:items-center sm:justify-between">
           <span>
             {isPredicting
               ? `Predicted price for ${formatDateLabel(predictionDate)}`
@@ -669,7 +808,7 @@ function LaptopCard({ laptop, currency, predictionDate, onPreview }) {
             <button
               type="button"
               onClick={() => onPreview(laptop)}
-              className="rounded-full border border-cyan-200/25 bg-cyan-300/10 px-4 py-2 text-xs font-semibold text-cyan-100 transition hover:border-cyan-200/70 hover:bg-cyan-300 hover:text-slate-950"
+              className="rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--accent-soft)] transition hover:border-[var(--accent-border)] hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)]"
             >
               Preview
             </button>
@@ -705,10 +844,10 @@ function CompareRow({ label, leftValue, rightValue, leftScore, rightScore }) {
   const leftBetter=leftScore>rightScore;
   const rightBetter=rightScore>leftScore;
   return (
-    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-2xl border border-white/10 bg-slate-950/45 p-5 text-base sm:text-lg">
-      <div className={`font-bold ${leftBetter ? "text-emerald-300" : rightBetter ? "text-rose-300" : "text-slate-100"}`}>{leftValue}</div>
-      <div className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">{label}</div>
-      <div className={`text-right font-bold ${rightBetter ? "text-emerald-300" : leftBetter ? "text-rose-300" : "text-slate-100"}`}>{rightValue}</div>
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-5 text-base sm:text-lg">
+      <div className={`font-bold ${leftBetter ? "text-emerald-300" : rightBetter ? "text-rose-300" : "text-[var(--text-primary)]"}`}>{leftValue}</div>
+      <div className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--text-muted)]">{label}</div>
+      <div className={`text-right font-bold ${rightBetter ? "text-emerald-300" : leftBetter ? "text-rose-300" : "text-[var(--text-primary)]"}`}>{rightValue}</div>
     </div>
   );
 }
@@ -716,12 +855,12 @@ function CompareRow({ label, leftValue, rightValue, leftScore, rightScore }) {
 function ConfigSelect({ label, value, onChange, options }) {
   return (
     <label className="min-w-0">
-      <span className="mb-2 block text-sm font-bold uppercase tracking-[0.18em] text-cyan-100/70">{label}</span>
+      <span className="mb-2 block text-sm font-bold uppercase tracking-[0.18em] text-[var(--accent-soft)]/70">{label}</span>
       <div className="relative">
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="h-14 w-full appearance-none rounded-2xl border border-cyan-200/30 bg-slate-950/90 px-4 pr-12 text-base font-bold text-white shadow-sm outline-none transition focus:border-cyan-200/80 focus:ring-4 focus:ring-cyan-300/15"
+          className="h-14 w-full appearance-none rounded-2xl border border-[var(--accent-border)] bg-[var(--input-bg)] px-4 pr-12 text-base font-bold text-[var(--text-primary)] shadow-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--focus-ring)]"
         >
           {options.map((option) => (
             <option key={option.value} value={option.value}>
@@ -729,8 +868,8 @@ function ConfigSelect({ label, value, onChange, options }) {
             </option>
           ))}
         </select>
-        <span className="pointer-events-none absolute right-4 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-cyan-200/25 bg-cyan-300/10">
-          <span className="h-2.5 w-2.5 rotate-45 border-b-2 border-r-2 border-cyan-100" />
+        <span className="pointer-events-none absolute right-4 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--accent-border)] bg-[var(--accent)]/10">
+          <span className="h-2.5 w-2.5 rotate-45 border-b-2 border-r-2 border-[var(--accent-soft)]" />
         </span>
       </div>
     </label>
@@ -764,7 +903,7 @@ function LaptopSearchPicker({ onPickLaptop, pickOptions, selectedLaptop, headerM
             setOpen(true);
           }}
           placeholder={selectedLaptop ? selectedLaptop.title : "Search laptop model, brand, CPU, or GPU"}
-          className={`w-full rounded-2xl border border-cyan-200/30 bg-slate-950/80 px-4 font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-cyan-200/80 focus:ring-4 focus:ring-cyan-300/15 ${
+          className={`w-full rounded-2xl border border-[var(--accent-border)] bg-[var(--input-bg)] px-4 font-bold text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-subtle)] focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--focus-ring)] ${
             headerMode ? "h-12 text-2xl" : "h-14 text-base"
           }`}
         />
@@ -776,7 +915,7 @@ function LaptopSearchPicker({ onPickLaptop, pickOptions, selectedLaptop, headerM
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
-            className="absolute left-0 right-0 top-[5.2rem] z-30 max-h-72 overflow-y-auto rounded-2xl border border-cyan-100/20 bg-slate-950 p-2 shadow-[0_0_44px_rgba(34,211,238,0.18)]"
+            className="absolute left-0 right-0 top-[5.2rem] z-30 max-h-72 overflow-y-auto rounded-2xl border border-[var(--border-strong)] bg-[var(--panel-strong)] p-2 shadow-[var(--shadow-soft)]"
           >
             {filteredOptions.map((item) => (
               <button
@@ -784,14 +923,14 @@ function LaptopSearchPicker({ onPickLaptop, pickOptions, selectedLaptop, headerM
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => selectLaptop(item.id)}
-                className="block w-full rounded-xl px-4 py-3 text-left transition hover:bg-cyan-300/10"
+                className="block w-full rounded-xl px-4 py-3 text-left transition hover:bg-[var(--accent)]/10"
               >
-                <span className="block text-base font-bold text-white">{item.title}</span>
-                <span className="mt-1 block text-sm text-slate-400">{item.subtitle} - {formatPrice(item.priceAed, "AED")}</span>
+                <span className="block text-base font-bold text-[var(--text-primary)]">{item.title}</span>
+                <span className="mt-1 block text-sm text-[var(--text-muted)]">{item.subtitle} - {formatPrice(item.priceAed, "AED")}</span>
               </button>
             ))}
             {filteredOptions.length === 0 && (
-              <div className="px-4 py-3 text-base font-semibold text-slate-400">No matching laptops</div>
+              <div className="px-4 py-3 text-base font-semibold text-[var(--text-muted)]">No matching laptops</div>
             )}
           </motion.div>
         )}
@@ -803,6 +942,7 @@ function LaptopSearchPicker({ onPickLaptop, pickOptions, selectedLaptop, headerM
 function LaptopPanel({ laptop, state, setState, currency, predictionDate, canPickLaptop = false, onPickLaptop, pickOptions, heading }) {
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [dateDraft, setDateDraft] = useState(state.predictionDate || predictionDate || getTomorrowDateValue());
+  const [isPredicting, setIsPredicting] = useState(false);
   const config=getSupportedConfig(laptop);
   const minPredictionDate=getTomorrowDateValue();
   const currentPrice=formatPrice(laptop.priceAed, currency);
@@ -810,12 +950,32 @@ function LaptopPanel({ laptop, state, setState, currency, predictionDate, canPic
   const confidenceDisplay=state.confidenceScore || "--";
   const dateDisplay=state.predictionDate ? formatDateLabel(state.predictionDate) : "--";
 
-  function runPrediction() {
+  async function runPrediction() {
     const nextDate=dateDraft < minPredictionDate ? minPredictionDate : dateDraft;
-    const { predictedPrice, confidenceScore }=getPredictedPrice(laptop.id,nextDate,{ selectedRAM: state.selectedRAM, selectedStorage: state.selectedStorage, selectedGPU: state.selectedGPU, selectedCPU: state.selectedCPU });
-    setDateDraft(nextDate);
-    setState((current)=>({ ...current, predictedPrice, confidenceScore, predictionDate: nextDate }));
-    setDatePickerOpen(false);
+    setIsPredicting(true);
+
+    try {
+      const payload = buildPreviewPredictionPayload(
+        laptop,
+        {
+          selectedRAM: state.selectedRAM,
+          selectedStorage: state.selectedStorage,
+          selectedGPU: state.selectedGPU,
+          selectedCPU: state.selectedCPU
+        },
+        nextDate
+      );
+      const response = await requestPrediction(payload);
+      setDateDraft(nextDate);
+      setState((current)=>({ ...current, predictedPrice: response.prediction, confidenceScore: response.confidenceScore, predictionDate: nextDate }));
+      setDatePickerOpen(false);
+    } catch (error) {
+      setDateDraft(nextDate);
+      setState((current)=>({ ...current, predictedPrice: null, confidenceScore: null, predictionDate: nextDate }));
+      setDatePickerOpen(false);
+    } finally {
+      setIsPredicting(false);
+    }
   }
 
   function clearPanelPrediction() {
@@ -825,11 +985,11 @@ function LaptopPanel({ laptop, state, setState, currency, predictionDate, canPic
   }
 
   return (
-    <article className="rounded-2xl border border-cyan-100/15 bg-white/[0.05] p-6 shadow-[0_0_42px_rgba(34,211,238,0.09)]">
+    <article className="rounded-2xl border border-[var(--border)] bg-[var(--card-bg)] p-6 shadow-[var(--shadow-soft)]">
       <div className="mb-5">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.24em] text-cyan-200/70">{heading}</p>
-          {!canPickLaptop && <h2 className="mt-2 text-2xl font-bold text-white">{laptop.title}</h2>}
+          <p className="text-sm font-bold uppercase tracking-[0.24em] text-[var(--accent)]/70">{heading}</p>
+          {!canPickLaptop && <h2 className="mt-2 text-2xl font-bold text-[var(--text-primary)]">{laptop.title}</h2>}
         </div>
         {canPickLaptop && (
           <div className="mt-2">
@@ -859,14 +1019,14 @@ function LaptopPanel({ laptop, state, setState, currency, predictionDate, canPic
             setDateDraft(state.predictionDate || predictionDate || minPredictionDate);
             setDatePickerOpen((open) => !open);
           }}
-          className="h-12 rounded-2xl bg-cyan-300 px-5 text-base font-bold text-slate-950 hover:bg-cyan-200"
+          className="h-12 rounded-2xl bg-[var(--accent)] px-5 text-base font-bold text-[var(--accent-contrast)] hover:bg-[var(--accent-hover)]"
         >
           Predict Price
         </button>
-        <span className="text-base text-slate-300">Current Price: <span className="font-bold text-cyan-100">{currentPrice}</span></span>
-        <span className="text-base text-slate-300">Predicted Price: <span className="font-bold text-cyan-100">{predictedDisplay}</span></span>
-        <span className="text-base text-slate-300">Confidence: <span className="font-bold text-cyan-100">{confidenceDisplay}</span></span>
-        <span className="text-base text-slate-300">Prediction Date: <span className="font-bold text-cyan-100">{dateDisplay}</span></span>
+        <span className="text-base text-[var(--text-secondary)]">Current Price: <span className="font-bold text-[var(--accent-soft)]">{currentPrice}</span></span>
+        <span className="text-base text-[var(--text-secondary)]">Predicted Price: <span className="font-bold text-[var(--accent-soft)]">{predictedDisplay}</span></span>
+        <span className="text-base text-[var(--text-secondary)]">Confidence: <span className="font-bold text-[var(--accent-soft)]">{confidenceDisplay}</span></span>
+        <span className="text-base text-[var(--text-secondary)]">Prediction Date: <span className="font-bold text-[var(--accent-soft)]">{dateDisplay}</span></span>
 
         <AnimatePresence>
           {datePickerOpen && (
@@ -875,35 +1035,36 @@ function LaptopPanel({ laptop, state, setState, currency, predictionDate, canPic
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
               transition={{ duration: 0.18 }}
-              className="absolute left-0 top-14 z-40 w-80 rounded-2xl border border-purple-200/25 bg-slate-950 p-4 shadow-[0_0_50px_rgba(168,85,247,0.2)]"
+              className="absolute left-0 top-14 z-40 w-80 rounded-2xl border border-[var(--highlight-border)] bg-[var(--panel-strong)] p-4 shadow-[var(--shadow-soft)]"
             >
               <label>
-                <span className="mb-2 block text-sm font-semibold text-white">Predict price for</span>
+                <span className="mb-2 block text-sm font-semibold text-[var(--text-primary)]">Predict price for</span>
                 <input
                   type="date"
                   min={minPredictionDate}
                   value={dateDraft}
                   onChange={(event) => setDateDraft(event.target.value)}
-                  className="lapis-date-input h-12 w-full rounded-xl border border-white/10 bg-slate-900 px-3 text-base font-semibold text-white outline-none focus:border-purple-200/70 focus:ring-4 focus:ring-purple-300/10"
+                  className="lapis-date-input h-12 w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 text-base font-semibold text-[var(--text-primary)] outline-none focus:border-[var(--highlight-border)] focus:ring-4 focus:ring-[var(--highlight-ring)]"
                 />
               </label>
-              <p className="mt-2 text-sm leading-5 text-slate-400">
+              <p className="mt-2 text-sm leading-5 text-[var(--text-muted)]">
                 Select a future date for this laptop prediction.
               </p>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={clearPanelPrediction}
-                  className="h-11 rounded-xl border border-white/15 text-sm font-semibold text-slate-200 hover:border-purple-200/50"
+                  className="h-11 rounded-xl border border-[var(--border-strong)] text-sm font-semibold text-[var(--text-secondary)] hover:border-[var(--highlight-border)]"
                 >
                   Current
                 </button>
                 <button
                   type="button"
                   onClick={runPrediction}
-                  className="h-11 rounded-xl bg-purple-300 text-sm font-bold text-slate-950 hover:bg-purple-200"
+                  disabled={isPredicting}
+                  className="h-11 rounded-xl bg-[var(--highlight)] text-sm font-bold text-[var(--accent-contrast)] hover:bg-[var(--highlight-hover)] disabled:opacity-60"
                 >
-                  Predict
+                  {isPredicting ? "Predicting..." : "Predict"}
                 </button>
               </div>
             </motion.div>
@@ -916,10 +1077,10 @@ function LaptopPanel({ laptop, state, setState, currency, predictionDate, canPic
 
 function EmptyComparisonPanel({ onPickLaptop, pickOptions }) {
   return (
-    <article className="flex min-h-[28rem] flex-col justify-center rounded-2xl border border-dashed border-cyan-100/20 bg-white/[0.035] p-6 shadow-[0_0_42px_rgba(34,211,238,0.07)]">
+    <article className="flex min-h-[28rem] flex-col justify-center rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface-muted)] p-6 shadow-[var(--shadow-soft)]">
       <div className="mx-auto w-full max-w-xl">
-        <p className="text-sm font-bold uppercase tracking-[0.24em] text-cyan-200/70">Compare With</p>
-        <h2 className="mt-2 text-2xl font-bold text-white">Search and choose a laptop</h2>
+        <p className="text-sm font-bold uppercase tracking-[0.24em] text-[var(--accent)]/70">Compare With</p>
+        <h2 className="mt-2 text-2xl font-bold text-[var(--text-primary)]">Search and choose a laptop</h2>
         <div className="mt-5">
           <LaptopSearchPicker onPickLaptop={onPickLaptop} pickOptions={pickOptions} />
         </div>
@@ -958,20 +1119,20 @@ function LaptopPreview({ laptop, currency, onCurrencyChange, predictionDate, onB
       animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       exit={{ opacity: 0, y: -18, filter: "blur(12px)" }}
       transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-      className="rounded-[1.6rem] border border-cyan-100/15 bg-white/[0.055] p-5 shadow-[0_0_60px_rgba(34,211,238,0.1)] backdrop-blur-2xl"
+      className="rounded-[1.6rem] border border-[var(--border)] bg-[var(--card-bg)] p-5 shadow-[var(--shadow-soft)] backdrop-blur-2xl"
     >
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <button
             type="button"
             onClick={onBack}
-            className="mb-4 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-cyan-200/60 hover:text-white"
+            className="mb-4 rounded-full border border-[var(--border-strong)] px-4 py-2 text-sm font-semibold text-[var(--text-secondary)] transition hover:border-[var(--accent-border)] hover:text-[var(--text-primary)]"
           >
             Back to results
           </button>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-200/65">Laptop Preview</p>
-          <h1 className="mt-2 text-3xl font-semibold text-white sm:text-5xl">{laptop.title}</h1>
-          <p className="mt-2 text-slate-400">{laptop.subtitle}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[var(--accent)]/65">Laptop Preview</p>
+          <h1 className="mt-2 text-3xl font-semibold text-[var(--text-primary)] sm:text-5xl">{laptop.title}</h1>
+          <p className="mt-2 text-[var(--text-muted)]">{laptop.subtitle}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="w-32">
@@ -988,17 +1149,17 @@ function LaptopPreview({ laptop, currency, onCurrencyChange, predictionDate, onB
             />
           </div>
           {!compareMode ? (
-            <button type="button" onClick={() => setCompareMode(true)} className="h-10 rounded-xl border border-cyan-200/30 bg-cyan-300/10 px-4 text-sm font-semibold text-cyan-100 hover:bg-cyan-300/20">
+            <button type="button" onClick={() => setCompareMode(true)} className="h-10 rounded-xl border border-[var(--accent-border)] bg-[var(--accent)]/10 px-4 text-sm font-semibold text-[var(--accent-soft)] hover:bg-[var(--accent)]/20">
               Compare Laptop
             </button>
           ) : (
-            <button type="button" onClick={() => setCompareMode(false)} className="h-10 rounded-xl border border-white/15 px-4 text-sm font-semibold text-slate-200 hover:border-cyan-200/60">
+            <button type="button" onClick={() => setCompareMode(false)} className="h-10 rounded-xl border border-[var(--border-strong)] px-4 text-sm font-semibold text-[var(--text-secondary)] hover:border-[var(--accent-border)]">
               Remove Comparison
             </button>
           )}
           {predictionDate && (
-            <div className="rounded-2xl border border-purple-200/25 bg-purple-300/10 px-5 py-2.5 text-purple-100">
-              <div className="text-xs uppercase tracking-[0.22em] text-purple-100/60">Prediction Date</div>
+            <div className="rounded-2xl border border-[var(--highlight-border)] bg-[var(--highlight)]/10 px-5 py-2.5 text-[var(--highlight-soft)]">
+              <div className="text-xs uppercase tracking-[0.22em] text-[var(--highlight-soft)]/60">Prediction Date</div>
               <div className="text-sm font-semibold">{formatDateLabel(predictionDate)}</div>
             </div>
           )}
@@ -1035,14 +1196,14 @@ function LaptopPreview({ laptop, currency, onCurrencyChange, predictionDate, onB
       </div>
 
       {compareMode && rightLaptop && rightLaptopState && (
-        <div className="mt-6 rounded-2xl border border-white/10 bg-slate-950/50 p-6">
+        <div className="mt-6 rounded-2xl border border-[var(--border)] bg-[var(--panel-strong)]/50 p-6">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-            <h3 className="text-2xl font-bold text-white">Comparison</h3>
-            <div className="flex rounded-xl border border-white/15 bg-slate-950/70 p-1">
-              <button type="button" onClick={() => setComparePriceMode("current")} className={`rounded-lg px-4 py-2 text-base font-bold ${comparePriceMode === "current" ? "bg-cyan-300 text-slate-950" : "text-slate-300"}`}>
+            <h3 className="text-2xl font-bold text-[var(--text-primary)]">Comparison</h3>
+            <div className="flex rounded-xl border border-[var(--border-strong)] bg-[var(--input-bg)] p-1">
+              <button type="button" onClick={() => setComparePriceMode("current")} className={`rounded-lg px-4 py-2 text-base font-bold ${comparePriceMode === "current" ? "bg-[var(--accent)] text-[var(--accent-contrast)]" : "text-[var(--text-secondary)]"}`}>
                 Compare Current Price
               </button>
-              <button type="button" onClick={() => setComparePriceMode("predicted")} className={`rounded-lg px-4 py-2 text-base font-bold ${comparePriceMode === "predicted" ? "bg-cyan-300 text-slate-950" : "text-slate-300"}`}>
+              <button type="button" onClick={() => setComparePriceMode("predicted")} className={`rounded-lg px-4 py-2 text-base font-bold ${comparePriceMode === "predicted" ? "bg-[var(--accent)] text-[var(--accent-contrast)]" : "text-[var(--text-secondary)]"}`}>
                 Compare Predicted Price
               </button>
             </div>
@@ -1062,14 +1223,15 @@ function LaptopPreview({ laptop, currency, onCurrencyChange, predictionDate, onB
 
 function Spec({ label, value }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-slate-950/45 px-3 py-2">
-      <div className="text-[0.68rem] font-bold uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 text-sm font-semibold text-slate-100">{value}</div>
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2">
+      <div className="text-[0.68rem] font-bold uppercase tracking-wide text-[var(--text-subtle)]">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{value}</div>
     </div>
   );
 }
 
 export default function PredictionLab({ onBack }) {
+  const [theme, setTheme] = useState("light");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [draftFilters, setDraftFilters] = useState(DEFAULT_FILTERS);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1081,6 +1243,8 @@ export default function PredictionLab({ onBack }) {
   const [sortDirection, setSortDirection] = useState("desc");
   const [visibleCount, setVisibleCount] = useState(INITIAL_RESULT_COUNT);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [predictionResults, setPredictionResults] = useState({});
+  const [predictionStatus, setPredictionStatus] = useState("idle");
   const loadMoreRef = useRef(null);
   const minPredictionDate = getTomorrowDateValue();
 
@@ -1152,26 +1316,20 @@ export default function PredictionLab({ onBack }) {
     setDrawerOpen(false);
   }
 
-  function toggleQuickBrand(brand) {
-    const nextBrands = toggleArray(filters.brands, brand);
-    setFilters((current) => ({ ...current, brands: nextBrands }));
-    setDraftFilters((current) => ({ ...current, brands: nextBrands }));
-  }
-
   const averagePrice = filteredLaptops.length
     ? Math.round(filteredLaptops.reduce((sum, laptop) => sum + laptop.priceAed, 0) / filteredLaptops.length)
     : 0;
   const averageDisplayPrice = filteredLaptops.length
     ? Math.round(
         filteredLaptops.reduce(
-          (sum, laptop) => sum + (predictionDate ? getListPredictedPrice(laptop.priceAed, predictionDate, laptop) : laptop.priceAed),
+          (sum, laptop) => sum + (predictionDate ? predictionResults[laptop.id]?.prediction ?? laptop.priceAed : laptop.priceAed),
           0
         ) / filteredLaptops.length
       )
     : averagePrice;
   const sortedLaptops = useMemo(
-    () => sortLaptops(filteredLaptops, sortParameter, sortDirection, predictionDate),
-    [filteredLaptops, sortParameter, sortDirection, predictionDate]
+    () => sortLaptops(filteredLaptops, sortParameter, sortDirection, predictionDate, predictionResults),
+    [filteredLaptops, sortParameter, sortDirection, predictionDate, predictionResults]
   );
   const visibleLaptops = sortedLaptops.slice(0, visibleCount);
   const hasMoreResults = visibleCount < sortedLaptops.length;
@@ -1180,6 +1338,44 @@ export default function PredictionLab({ onBack }) {
     setVisibleCount(INITIAL_RESULT_COUNT);
     setLoadingMore(false);
   }, [filters, sortParameter, sortDirection, predictionDate]);
+
+  useEffect(() => {
+    if (!predictionDate) {
+      setPredictionResults({});
+      setPredictionStatus("idle");
+      return undefined;
+    }
+
+    if (filteredLaptops.length === 0) {
+      setPredictionResults({});
+      setPredictionStatus("ready");
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setPredictionStatus("loading");
+    setPredictionResults({});
+
+    requestPrediction(
+      {
+        items: filteredLaptops.map((laptop) => buildListPredictionPayload(laptop, predictionDate)),
+        predictionDate
+      },
+      controller.signal
+    )
+      .then((response) => {
+        const predictions = Array.isArray(response?.predictions) ? response.predictions : [];
+        setPredictionResults(normalizePredictionResults(predictions));
+        setPredictionStatus("ready");
+      })
+      .catch((error) => {
+        if (error?.name === "AbortError") return;
+        setPredictionResults({});
+        setPredictionStatus("error");
+      });
+
+    return () => controller.abort();
+  }, [filteredLaptops, predictionDate]);
 
   useEffect(() => {
     if (previewLaptop || !hasMoreResults || loadingMore) return undefined;
@@ -1218,27 +1414,34 @@ export default function PredictionLab({ onBack }) {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#020617] text-white">
+    <main data-theme={theme} className="lab-theme relative min-h-screen overflow-hidden bg-[var(--page-bg)] text-[var(--text-primary)]">
       <NeuralBackground />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_20%,rgba(168,85,247,0.18),transparent_28%),radial-gradient(circle_at_18%_18%,rgba(34,211,238,0.18),transparent_28%),linear-gradient(to_bottom,rgba(2,6,23,0.2),rgba(2,6,23,0.94))]" />
 
       <div className="relative z-10 mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
         <header className="mb-5 flex items-center justify-between gap-4">
-          <button type="button" onClick={onBack} className="text-xl font-semibold tracking-tight text-white">
+          <button type="button" onClick={onBack} className="text-xl font-semibold tracking-tight text-[var(--text-primary)]">
             LAPIS AI
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
+            className="rounded-xl border border-[var(--border-strong)] bg-[var(--card-bg)] px-4 py-2 text-sm font-bold text-[var(--text-secondary)] shadow-[var(--shadow-soft)] transition hover:border-[var(--accent-border)] hover:text-[var(--text-primary)]"
+            aria-label="Toggle light and dark theme"
+          >
+            {theme === "light" ? "Dark Mode" : "Light Mode"}
           </button>
         </header>
 
         {!previewLaptop && (
         <motion.section
-          className="mb-6 rounded-[1.5rem] border border-cyan-100/15 bg-white/[0.055] p-4 shadow-[0_0_60px_rgba(34,211,238,0.1)] backdrop-blur-2xl"
+          className="mb-6 rounded-[1.5rem] border border-[var(--border)] bg-[var(--card-bg)] p-4 shadow-[var(--shadow-soft)] backdrop-blur-2xl"
           initial={{ opacity: 0, y: 18, filter: "blur(14px)" }}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{ duration: 0.72, ease: [0.16, 1, 0.3, 1] }}
         >
           <div className="mb-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200/70">Prediction Lab</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white sm:text-5xl">Explore current laptop prices</h1>
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--accent)]/70">Prediction Lab</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-normal text-[var(--text-primary)] sm:text-5xl">Explore current laptop prices</h1>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-[0.8fr_2fr_1fr_1fr_1fr_1fr_1fr_auto_auto]">
@@ -1254,12 +1457,12 @@ export default function PredictionLab({ onBack }) {
               ]}
             />
             <label className="min-w-0">
-              <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-cyan-100/60">Search</span>
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-soft)]/60">Search</span>
               <input
                 value={filters.query}
                 onChange={(event) => updateTopFilter("query", event.target.value)}
                 placeholder="Search Brand, Model, or Laptop Name"
-                className="h-11 w-full rounded-xl border border-white/10 bg-slate-950/70 px-4 text-sm font-medium text-white shadow-sm outline-none transition placeholder:text-slate-500 focus:border-cyan-200/70 focus:ring-4 focus:ring-cyan-300/10"
+                className="h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-4 text-sm font-medium text-[var(--text-primary)] shadow-sm outline-none transition placeholder:text-[var(--text-subtle)] focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--focus-ring)]"
               />
             </label>
             <PriceField
@@ -1318,14 +1521,14 @@ export default function PredictionLab({ onBack }) {
                 setDraftFilters(filters);
                 setDrawerOpen(true);
               }}
-              className="h-11 self-end rounded-xl border border-cyan-200/25 bg-cyan-300 px-5 text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(34,211,238,0.25)] transition hover:bg-cyan-200 lg:hidden"
+              className="h-11 self-end rounded-xl border border-[var(--accent-border)] bg-[var(--accent)] px-5 text-sm font-bold text-[var(--accent-contrast)] shadow-[var(--shadow-soft)] lg:hidden"
             >
               More Filters
             </button>
             <button
               type="button"
               onClick={clearFilters}
-              className="h-11 self-end rounded-xl border border-white/15 px-5 text-sm font-bold text-slate-200 transition hover:border-cyan-200/55 hover:text-white"
+              className="h-11 self-end rounded-xl border border-[var(--border-strong)] px-5 text-sm font-bold text-[var(--text-secondary)] transition hover:border-[var(--accent-border)] hover:text-[var(--text-primary)]"
             >
               Reset
             </button>
@@ -1352,24 +1555,33 @@ export default function PredictionLab({ onBack }) {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                 >
-            <div className="relative z-30 mb-5 rounded-2xl border border-cyan-100/15 bg-white/[0.05] p-4 shadow-[0_0_46px_rgba(14,165,233,0.08)] backdrop-blur-2xl">
+            <div className="relative z-30 mb-5 rounded-2xl border border-[var(--border)] bg-[var(--card-bg)] p-4 shadow-[var(--shadow-soft)] backdrop-blur-2xl">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h2 className="text-2xl font-semibold tracking-normal text-white">
+                  <h2 className="text-2xl font-semibold tracking-normal text-[var(--text-primary)]">
                     {predictionDate
                       ? `Predicted prices for ${formatDateLabel(predictionDate)}`
                       : "Current prices"}{" "}
                     - {filteredLaptops.length} Models
                   </h2>
-                  <p className="mt-1 text-sm text-slate-400">
+                  <p className="mt-1 text-sm text-[var(--text-muted)]">
                     Average {predictionDate ? "predicted" : "current"} price {formatPrice(averageDisplayPrice, filters.currency)} based on matching configurations.
                   </p>
+                  {predictionDate && (
+                    <p className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-soft)]/70">
+                      {predictionStatus === "loading"
+                        ? "Loading backend model predictions..."
+                        : predictionStatus === "error"
+                          ? "Using local fallback estimates"
+                          : "Backend model predictions active"}
+                    </p>
+                  )}
                 </div>
                 <div className="relative flex shrink-0 flex-col gap-3 sm:flex-row">
                   <select
                     value={sortParameter}
                     onChange={(event) => setSortParameter(event.target.value)}
-                    className="h-11 rounded-xl border border-cyan-200/20 bg-slate-950/70 px-4 text-sm font-semibold text-white outline-none transition focus:border-cyan-200/70 focus:ring-4 focus:ring-cyan-300/10"
+                    className="h-11 rounded-xl border border-[var(--accent-border)] bg-[var(--input-bg)] px-4 text-sm font-semibold text-[var(--text-primary)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--focus-ring)]"
                   >
                     {SORT_PARAMETERS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1381,7 +1593,7 @@ export default function PredictionLab({ onBack }) {
                     value={sortDirection}
                     onChange={(event) => setSortDirection(event.target.value)}
                     disabled={!sortParameter}
-                    className="h-11 rounded-xl border border-cyan-200/20 bg-slate-950/70 px-4 text-sm font-semibold text-white outline-none transition focus:border-cyan-200/70 focus:ring-4 focus:ring-cyan-300/10 disabled:opacity-45"
+                    className="h-11 rounded-xl border border-[var(--accent-border)] bg-[var(--input-bg)] px-4 text-sm font-semibold text-[var(--text-primary)] outline-none transition focus:border-[var(--accent-border)] focus:ring-4 focus:ring-[var(--focus-ring)] disabled:opacity-45"
                   >
                     {SORT_DIRECTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1398,8 +1610,8 @@ export default function PredictionLab({ onBack }) {
                     onClick={() => setPredictionPickerOpen((open) => !open)}
                     className={`h-11 rounded-xl border px-5 text-sm font-semibold transition ${
                       predictionDate
-                        ? "border-purple-200 bg-purple-300 text-slate-950 shadow-[0_0_30px_rgba(168,85,247,0.45)]"
-                        : "border-purple-200/40 bg-purple-300/10 text-purple-100 hover:border-purple-200 hover:bg-purple-300/20"
+                        ? "border-[var(--highlight)] bg-[var(--highlight)] text-[var(--accent-contrast)] shadow-[var(--shadow-soft)]"
+                        : "border-[var(--highlight-border)] bg-[var(--highlight)]/10 text-[var(--highlight-soft)] hover:border-[var(--highlight)] hover:bg-[var(--highlight)]/20"
                     }`}
                   >
                     {predictionDate ? `Prediction On - ${formatDateLabel(predictionDate)}` : "Predict Price"}
@@ -1412,33 +1624,33 @@ export default function PredictionLab({ onBack }) {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 8, scale: 0.98 }}
                         transition={{ duration: 0.18 }}
-                        className="absolute right-0 top-14 z-50 w-72 rounded-2xl border border-purple-200/25 bg-slate-950/95 p-4 shadow-[0_0_50px_rgba(168,85,247,0.2)] backdrop-blur-2xl"
+                        className="absolute right-0 top-14 z-50 w-72 rounded-2xl border border-[var(--highlight-border)] bg-[var(--panel-bg)] p-4 shadow-[var(--shadow-soft)] backdrop-blur-2xl"
                       >
                         <label>
-                          <span className="mb-2 block text-sm font-semibold text-white">Predict price for</span>
+                          <span className="mb-2 block text-sm font-semibold text-[var(--text-primary)]">Predict price for</span>
                           <input
                             type="date"
                             min={minPredictionDate}
                             value={predictionDraftDate}
                             onChange={(event) => setPredictionDraftDate(event.target.value)}
-                            className="lapis-date-input h-11 w-full rounded-xl border border-white/10 bg-slate-900 px-3 text-sm text-white outline-none focus:border-purple-200/70 focus:ring-4 focus:ring-purple-300/10"
+                            className="lapis-date-input h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--input-bg)] px-3 text-sm text-[var(--text-primary)] outline-none focus:border-[var(--highlight-border)] focus:ring-4 focus:ring-[var(--highlight-ring)]"
                           />
                         </label>
-                        <p className="mt-2 text-xs leading-5 text-slate-400">
+                        <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">
                           Select a future date after the current system date.
                         </p>
                         <div className="mt-4 grid grid-cols-2 gap-2">
                           <button
                             type="button"
                             onClick={clearPredictionMode}
-                            className="h-10 rounded-xl border border-white/15 text-sm font-semibold text-slate-200 hover:border-purple-200/50"
+                            className="h-10 rounded-xl border border-[var(--border-strong)] text-sm font-semibold text-[var(--text-secondary)] hover:border-[var(--highlight-border)]"
                           >
                             Current
                           </button>
                           <button
                             type="button"
                             onClick={activatePrediction}
-                            className="h-10 rounded-xl bg-purple-300 text-sm font-bold text-slate-950 hover:bg-purple-200"
+                            className="h-10 rounded-xl bg-[var(--highlight)] text-sm font-bold text-[var(--accent-contrast)] hover:bg-[var(--highlight-hover)]"
                           >
                             Predict
                           </button>
@@ -1449,13 +1661,6 @@ export default function PredictionLab({ onBack }) {
                 </div>
               </div>
 
-              <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-                {QUICK_BRANDS.map((brand) => (
-                  <PillButton key={brand} selected={filters.brands.includes(brand)} onClick={() => toggleQuickBrand(brand)}>
-                    {brand}
-                  </PillButton>
-                ))}
-              </div>
             </div>
 
             <motion.div layout className="relative z-0 space-y-4">
@@ -1466,20 +1671,22 @@ export default function PredictionLab({ onBack }) {
                     laptop={laptop}
                     currency={filters.currency}
                     predictionDate={predictionDate}
+                    predictedPrice={predictionResults[laptop.id]?.prediction}
+                    predictedConfidence={predictionResults[laptop.id]?.confidenceScore}
                     onPreview={setPreviewLaptop}
                   />
                 ))}
               </AnimatePresence>
 
               {hasMoreResults && (
-                <div ref={loadMoreRef} className="flex min-h-20 items-center justify-center rounded-2xl border border-cyan-100/10 bg-white/[0.035]">
+                <div ref={loadMoreRef} className="flex min-h-20 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]">
                   {loadingMore ? (
-                    <div className="flex items-center gap-3 text-sm font-semibold text-cyan-100">
-                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-200/25 border-t-cyan-200" />
+                    <div className="flex items-center gap-3 text-sm font-semibold text-[var(--accent-soft)]">
+                      <span className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--accent-border)] border-t-[var(--accent)]" />
                       Loading more laptops...
                     </div>
                   ) : (
-                    <div className="text-sm font-semibold text-slate-500">
+                    <div className="text-sm font-semibold text-[var(--text-subtle)]">
                       Showing {visibleLaptops.length.toLocaleString()} of {sortedLaptops.length.toLocaleString()} models
                     </div>
                   )}
@@ -1487,9 +1694,9 @@ export default function PredictionLab({ onBack }) {
               )}
 
               {filteredLaptops.length === 0 && (
-                <div className="rounded-2xl border border-dashed border-cyan-200/25 bg-white/[0.045] p-10 text-center backdrop-blur-xl">
-                  <h2 className="text-xl font-semibold text-white">No matching laptop signals found</h2>
-                  <p className="mt-2 text-sm text-slate-400">Try widening the price range or clearing a few filters.</p>
+                <div className="rounded-2xl border border-dashed border-[var(--accent-border)] bg-[var(--surface-muted)] p-10 text-center backdrop-blur-xl">
+                  <h2 className="text-xl font-semibold text-[var(--text-primary)]">No matching laptop signals found</h2>
+                  <p className="mt-2 text-sm text-[var(--text-muted)]">Try widening the price range or clearing a few filters.</p>
                 </div>
               )}
             </motion.div>
@@ -1507,14 +1714,14 @@ export default function PredictionLab({ onBack }) {
       <AnimatePresence>
         {drawerOpen && (
           <motion.div
-            className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-md lg:hidden"
+            className="fixed inset-0 z-40 bg-[var(--input-bg)] backdrop-blur-md lg:hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setDrawerOpen(false)}
           >
             <motion.div
-              className="absolute inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-3xl border border-cyan-100/15 bg-[#020617] p-4 shadow-2xl"
+              className="absolute inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-3xl border border-[var(--border)] bg-[var(--page-bg)] p-4 shadow-2xl"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}

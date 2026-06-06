@@ -14,4 +14,3 @@ def list_brands(json_path):
 if __name__ == '__main__':
     json_path = os.path.join(os.path.dirname(__file__), 'laptops.json')
     list_brands(json_path)
-

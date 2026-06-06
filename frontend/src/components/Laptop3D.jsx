@@ -68,8 +68,8 @@ function CustomKey({ keyData }) {
             <mesh position={[0, 0.008, 0]}>
                 <boxGeometry args={[keyData.width - 0.005, 0.016, keyData.depth - 0.005]} />
                 <meshStandardMaterial
-                    color="#ff0000"
-                    emissive="#ff0000"
+                    color="#10625b"
+                    emissive="#10625b"
                     emissiveIntensity={keyData.isWASD ? 4.5 : 2.2}
                     roughness={0.1}
                     metalness={0.1}
@@ -82,7 +82,7 @@ function CustomKey({ keyData }) {
                 position={[0, 0.016, 0]}
             >
                 <meshStandardMaterial
-                    color={keyData.isWASD ? "#ffebeb" : "#ffffff"}
+                    color={keyData.isWASD ? "#e9f5f1" : "#ffffff"}
                     roughness={0.15}
                     metalness={0.05}
                 />
@@ -155,9 +155,9 @@ function DynamicDisplay() {
         const ctx = canvasRef.getContext("2d");
         if (!ctx) return;
         const t = clock.getElapsedTime();
-        ctx.fillStyle = "#030002";
+        ctx.fillStyle = "#101816";
         ctx.fillRect(0, 0, canvasRef.width, canvasRef.height);
-        ctx.strokeStyle = "rgba(200,0,0,0.06)";
+        ctx.strokeStyle = "rgba(16,98,91,0.12)";
         ctx.lineWidth = 1;
         const step = 32;
         for (let x = 0; x < canvasRef.width; x += step) {
@@ -166,22 +166,22 @@ function DynamicDisplay() {
         for (let y = 0; y < canvasRef.height; y += step) {
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvasRef.width, y); ctx.stroke();
         }
-        ctx.fillStyle = "rgba(240,15,15,0.95)";
+        ctx.fillStyle = "rgba(111,196,182,0.95)";
         ctx.font = "bold 26px monospace";
-        ctx.fillText("CRIMSON ENGINE BIOS v4.51", 60, 80);
-        ctx.fillText("SYSTEM HEALTH: EXTREME OVERCLOCK", 60, 120);
-        ctx.fillText("COOLING FLUID SPEED: 6500 RPM", 60, 160);
-        ctx.fillStyle = "rgba(255,50,50,0.65)";
+        ctx.fillText("LAPIS VALUE ENGINE v4.51", 60, 80);
+        ctx.fillText("MARKET MODEL: PRICE SIGNAL READY", 60, 120);
+        ctx.fillText("DATA PIPELINE: 6500 ROWS/MIN", 60, 160);
+        ctx.fillStyle = "rgba(217,154,94,0.72)";
         ctx.font = "14px monospace";
         for (let i = 0; i < 15; i++) {
             const lineStr = `[MONITOR] TEMP_ZONE_0${i} -> STABLE ADDR: 0x${(2048 * i + 112).toString(16).toUpperCase()}`;
             ctx.fillText(lineStr, 60, 220 + i * 20);
         }
-        ctx.fillStyle = "rgba(60,0,0,0.6)";
+        ctx.fillStyle = "rgba(16,98,91,0.22)";
         ctx.fillRect(660, 80, 280, 30);
         ctx.fillRect(660, 140, 280, 30);
         ctx.fillRect(660, 200, 280, 30);
-        ctx.fillStyle = "rgba(255,10,10,0.9)";
+        ctx.fillStyle = "rgba(16,98,91,0.9)";
         const bar1 = 150 + Math.sin(t * 1.8) * 45;
         const bar2 = 200 + Math.cos(t * 2.5) * 30;
         const bar3 = 220 + Math.sin(t * 0.9) * 20;
@@ -193,7 +193,7 @@ function DynamicDisplay() {
         ctx.fillText(`GPU TEMP: ${(bar1 / 3).toFixed(1)}°C`, 670, 100);
         ctx.fillText(`CPU LOAD: ${(bar2 / 3.1).toFixed(1)}%`, 670, 160);
         ctx.fillText(`VRAM SPEED: ${(bar3 * 4.2).toFixed(0)} MHz`, 670, 220);
-        ctx.fillStyle = "rgba(255,0,0,0.5)";
+        ctx.fillStyle = "rgba(217,154,94,0.55)";
         ctx.fillRect(60, 520, 904, 8);
         texture.needsUpdate = true;
     });
@@ -210,11 +210,11 @@ function PalmRestDragonLogo() {
         <group position={[1.15, -0.436, 0.95]} rotation={[-Math.PI / 2, 0, -0.2]}>
             <mesh>
                 <ringGeometry args={[0.11, 0.13, 6]} />
-                <meshBasicMaterial color="#ff0000" toneMapped={false} />
+                <meshBasicMaterial color="#10625b" toneMapped={false} />
             </mesh>
             <mesh position={[0, 0, 0.005]}>
                 <planeGeometry args={[0.1, 0.1]} />
-                <meshBasicMaterial color="#ff2222" transparent opacity={0.85} toneMapped={false} />
+                <meshBasicMaterial color="#2f8f84" transparent opacity={0.85} toneMapped={false} />
             </mesh>
         </group>
     );
@@ -238,7 +238,7 @@ function LaptopModel() {
                     color="#080b0f"
                     roughness={0.4}
                     metalness={0.7}
-                    emissive="#ff0000"
+                    emissive="#10625b"
                     emissiveIntensity={0.65}
                 />
             </RoundedBox>
@@ -258,7 +258,7 @@ function LaptopModel() {
                 <RoundedBox args={[0.3, 0.3, 0.02]} radius={0.015} position={[0, 1.18, -0.095]}>
                     <meshStandardMaterial
                         color="#040609"
-                        emissive="#ff0000"
+                        emissive="#10625b"
                         emissiveIntensity={3.5}
                     />
                 </RoundedBox>
@@ -271,7 +271,7 @@ function LaptopModel() {
                 <rectAreaLight
                     width={3.6}
                     height={2.2}
-                    color="#ff0000"
+                    color="#10625b"
                     intensity={3.0}
                     position={[0, 1.18, 0.04]}
                     rotation={[0.12, Math.PI, 0]}
@@ -295,14 +295,14 @@ function CameraRig() {
 
 export default function App() {
     return (
-        <div className="relative h-screen w-screen text-white overflow-hidden select-none">
+        <div className="relative h-screen w-screen overflow-hidden text-[#f4f1ea] select-none">
             <div className="absolute inset-0">
                 <Canvas shadows camera={{ position: [0, 1.4, 7.4], fov: 40 }}>
                     <ambientLight intensity={0.5} />
                     <directionalLight position={[3, 6, 4]} intensity={2.2} castShadow />
-                    <pointLight position={[-4, 3, 2]} intensity={1.5} color="#ff0000" />
-                    <pointLight position={[4, -1, 2]} intensity={1.5} color="#ff0022" />
-                    <pointLight position={[0, -0.2, 1.5]} intensity={2.2} color="#ff0000" />
+                    <pointLight position={[-4, 3, 2]} intensity={1.5} color="#10625b" />
+                    <pointLight position={[4, -1, 2]} intensity={1.5} color="#a65f2b" />
+                    <pointLight position={[0, -0.2, 1.5]} intensity={2.2} color="#10625b" />
                     <Environment preset="night" />
                     <Suspense fallback={null}>
                         <Float speed={3.5} rotationIntensity={0.5} floatIntensity={1.2}>
